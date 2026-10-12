@@ -101,6 +101,10 @@ cmake --build build\release
 The result is `build\release\Skyrok.dll`. The first configure downloads and builds the
 dependencies and takes several minutes; later builds are quick.
 
+`build.cmd debug` (or the `debug` preset) builds `build\debug\Skyrok.dll` with its `Skyrok.pdb`,
+for use with a debugger. A debug build needs the debug Visual C++ runtime that comes with Visual
+Studio, so it only loads on a development machine.
+
 CommonLibSSE-NG is built from the maintained fork by alandtse through the vcpkg port in
 [`cmake/ports`](cmake/ports).
 

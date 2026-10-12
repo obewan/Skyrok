@@ -46,6 +46,22 @@ file(WRITE "${CONFIG_FILE}"
 
 file(INSTALL "${SOURCE_PATH}/extern/openvr/headers/" DESTINATION "${CURRENT_PACKAGES_DIR}/include")
 
+# CommonLibSSE links openvr_api.lib by the absolute path it had in the build tree. vcpkg caches the
+# installed package, so that path ends up pointing into whichever project built it first, and the
+# link fails once that build tree is cleaned or deleted. Ship the library with the package and make
+# the exported target refer to it there.
+set(OPENVR_LIB "${SOURCE_PATH}/extern/openvr/lib/win64/openvr_api.lib")
+file(INSTALL "${OPENVR_LIB}" DESTINATION "${CURRENT_PACKAGES_DIR}/lib")
+file(INSTALL "${OPENVR_LIB}" DESTINATION "${CURRENT_PACKAGES_DIR}/debug/lib")
+set(TARGETS_FILE "${CURRENT_PACKAGES_DIR}/share/CommonLibSSE/CommonLibSSE-targets.cmake")
+file(READ "${TARGETS_FILE}" TARGETS_CONTENT)
+string(FIND "${TARGETS_CONTENT}" "${OPENVR_LIB}" OPENVR_REFERENCE)
+if(OPENVR_REFERENCE EQUAL -1)
+    message(FATAL_ERROR "openvr_api.lib is no longer referenced by its build path: review this port.")
+endif()
+string(REPLACE "${OPENVR_LIB}" "\${_IMPORT_PREFIX}/lib/openvr_api.lib" TARGETS_CONTENT "${TARGETS_CONTENT}")
+file(WRITE "${TARGETS_FILE}" "${TARGETS_CONTENT}")
+
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/CommonLibSSE/CommonLibSSE")
 
