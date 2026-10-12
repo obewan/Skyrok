@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "skyrok",
+  "version-semver": "2.0.0",
+  "description": "SKSE plugin of Skyrok - A Weather Mod: darker and moonlit nights, darker interiors, image space grading, heavy rain and snow, applied at runtime to every loaded mod.",
+  "homepage": "https://github.com/obewan/Skyrok",
+  "license": "GPL-3.0-or-later",
+  "supports": "windows & x64",
+  "dependencies": [
+    "commonlibsse-ng",
+    "directxtk",
+    "rapidcsv",
+    "simpleini",
+    "spdlog"
+  ],
+  "builtin-baseline": "15e5f3820f0370f1ba7150853762cec0688cd396"
+}
