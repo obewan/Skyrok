@@ -1,7 +1,15 @@
 @echo off
-rem Builds Skyrok.dll (release).
+rem Builds Skyrok.dll.   build.cmd         -> release build, the one shipped with the mod
+rem                     build.cmd debug   -> debug build with Skyrok.pdb, for testing with a debugger
 rem Needs Visual Studio or its Build Tools with the C++ workload, CMake, and vcpkg with VCPKG_ROOT set.
 setlocal
+
+set "PRESET=%~1"
+if not defined PRESET set "PRESET=release"
+if /i not "%PRESET%"=="release" if /i not "%PRESET%"=="debug" (
+    echo Unknown build type "%PRESET%": use release or debug.
+    exit /b 1
+)
 
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" (
@@ -20,6 +28,6 @@ if not defined VCPKG_ROOT (
 
 call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 cd /d "%~dp0"
-cmake --preset release || exit /b 1
-cmake --build build\release || exit /b 1
-echo built %~dp0build\release\Skyrok.dll
+cmake --preset %PRESET% || exit /b 1
+cmake --build build\%PRESET% || exit /b 1
+echo built %~dp0build\%PRESET%\Skyrok.dll

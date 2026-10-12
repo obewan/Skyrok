@@ -69,13 +69,6 @@ Clouds = {Clouds}
 Ambient = {TwAmbient}
 Clouds = {TwClouds}
 
-; Moonlit nights: the night values above follow the moon phase.
-; With Strength = 0.30 a clear full-moon night is 30% brighter than the values above and a
-; new-moon night 30% darker; the effect is weaker under clouds, rain or snow.
-[Moonlight]
-Enabled = true
-Strength = 0.30
-
 ; Weathers left untouched: Plugin|0xFormID = any note
 [Exclude]
 {exclude}
@@ -206,8 +199,26 @@ Size = 1.15
 Area = 1.3
 """
 
+MOON_INI = """; Skyrok - A Weather Mod: moonlit nights settings
+; Nights follow the moon phase, in every weather, including the ones added by other mods.
+; It works on vanilla nights and together with Skyrok's darker nights.
+; Restart the game after editing.
+
+[General]
+Enabled = true
+
+[Moonlight]
+; With 0.30 a clear full-moon night is 30% brighter and a new-moon night 30% darker; a half moon
+; leaves the night as it is. The effect is halved under clouds and quartered in rain or snow.
+Strength = 0.30
+
+; Weathers left untouched: Plugin|0xFormID = any note
+[Exclude]
+""" + EXCLUDE + "\n"
+
 here = Path(__file__).parent
-for folder, file_name, content in (('HeavyRain', 'Skyrok_Rain.ini', RAIN_INI), ('HeavySnow', 'Skyrok_Snow.ini', SNOW_INI)):
+for folder, file_name, content in (('HeavyRain', 'Skyrok_Rain.ini', RAIN_INI), ('HeavySnow', 'Skyrok_Snow.ini', SNOW_INI),
+                                   ('Moonlight', 'Skyrok_Moonlight.ini', MOON_INI)):
     target = here / folder / file_name
     target.parent.mkdir(exist_ok=True)
     target.write_text(content, encoding='utf-8', newline='\r\n')

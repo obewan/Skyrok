@@ -67,11 +67,6 @@ struct NightSettings {
     float twilightAmbient = 1.0f;
     float twilightClouds = 1.0f;
 
-    // Moonlit nights: the night values above follow the moon phase. With a strength of 0.30 a
-    // clear full-moon night is 30% brighter than the values above, a new-moon night 30% darker.
-    bool moonlit = false;
-    float moonStrength = 0.3f;
-
     FormList excluded;
 
     bool Load() {
@@ -80,8 +75,6 @@ struct NightSettings {
             return false;
         }
         enabled = ini.GetBoolValue("General", "Enabled", true);
-        moonlit = ini.GetBoolValue("Moonlight", "Enabled", false);
-        moonStrength = std::clamp(static_cast<float>(ini.GetDoubleValue("Moonlight", "Strength", 0.3)), 0.0f, 1.0f);
 
         sky = IniTools::Factor(ini, "Night", "Sky");
         fog = IniTools::Factor(ini, "Night", "Fog");
@@ -115,8 +108,37 @@ struct NightSettings {
         IniTools::Set(ini, "Night", "Clouds", clouds);
         IniTools::Set(ini, "Twilight", "Ambient", twilightAmbient);
         IniTools::Set(ini, "Twilight", "Clouds", twilightClouds);
-        ini.SetBoolValue("Moonlight", "Enabled", moonlit, nullptr, true);
-        IniTools::Set(ini, "Moonlight", "Strength", moonStrength);
+        return ini.SaveFile(FILE) >= 0;
+    }
+};
+
+// Skyrok_Moonlight.ini: nights follow the moon phase. With a strength of 0.30 a clear full-moon
+// night is 30% brighter, a new-moon night 30% darker, and a half moon leaves the night as it is.
+// Independent of the night darkness above: it works on vanilla nights too.
+struct MoonSettings {
+    static constexpr auto FILE = "Data/SKSE/Plugins/Skyrok_Moonlight.ini";
+
+    bool enabled = false;
+    float strength = 0.3f;
+
+    FormList excluded;
+
+    bool Load() {
+        CSimpleIniA ini;
+        if (!IniTools::Open(ini, FILE)) {
+            return false;
+        }
+        enabled = ini.GetBoolValue("General", "Enabled", true);
+        strength = std::clamp(static_cast<float>(ini.GetDoubleValue("Moonlight", "Strength", 0.3)), 0.0f, 1.0f);
+        excluded = IniTools::Forms(ini, "Exclude");
+        return true;
+    }
+
+    bool Save() const {
+        CSimpleIniA ini;
+        IniTools::Open(ini, FILE);
+        ini.SetBoolValue("General", "Enabled", enabled, nullptr, true);
+        IniTools::Set(ini, "Moonlight", "Strength", strength);
         return ini.SaveFile(FILE) >= 0;
     }
 };
