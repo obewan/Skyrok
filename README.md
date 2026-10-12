@@ -13,8 +13,9 @@ conflicted with other weather mods. Since version 2.0 the plugin applies the sam
 memory, once the game has loaded every mod, so they apply to whatever the load order contains.
 
 - **Darker nights.** Multiplies the night colours of every weather.
-- **Moonlit nights.** Night darkness follows the moon phase: brighter under a full moon, darker
-  on a new moon, less so under clouds, rain or snow.
+- **Moonlit nights.** Nights follow the moon phase: brighter under a full moon, darker on a new
+  moon, less so under clouds, rain or snow. Independent of the darker nights, so it also works
+  on vanilla nights.
 - **Darker interiors.** Darkens every lighting template and every interior cell by the same
   factors, so all interiors are treated alike.
 - **Image space.** One grading for every image space. Saturation is corrected for each image
@@ -23,7 +24,7 @@ memory, once the game has loaded every mod, so they apply to whatever the load o
 - **In-game menu.** With SKSE Menu Framework installed, every setting can be changed, compared
   with preset buttons, and saved from inside the game.
 - **ReShade link.** When ReShade is present, the plugin tells its shaders whether it is raining,
-  whether the player is indoors, and whether it is night.
+  whether the player is indoors, whether it is night, and how dark the surroundings are.
 
 No game record is overridden. The plugin keeps the original values and recomputes from them, so
 changing a setting never stacks on a previous change.
@@ -47,7 +48,8 @@ disabled; it can still be switched on from the in-game menu and saved.
 
 | File | Feature |
 |---|---|
-| `Skyrok_Nights.ini` | Night darkness and moonlit nights |
+| `Skyrok_Nights.ini` | Night darkness |
+| `Skyrok_Moonlight.ini` | Moonlit nights |
 | `Skyrok_Interiors.ini` | Interior darkness |
 | `Skyrok_ImageSpace.ini` | Image space grading and eye adaptation |
 | `Skyrok_Rain.ini` | Heavy rain |
@@ -73,15 +75,21 @@ uniform float Rain < source = "skyrok_rain"; > = -1.0;
 | `skyrok_rain` | 0 when dry or indoors, about 0.5 in ordinary rain, 1 in a storm; eased over a few seconds |
 | `skyrok_interior` | 1 indoors, 0 outdoors |
 | `skyrok_night` | 0 by day, 1 at night, in between during sunrise and sunset |
+| `skyrok_darkness` | 0 in daylight and bright rooms, 1 at night and in dark places: the night level outdoors, the darkness of the room's own ambient light indoors; eased like an eye adapting |
 
 A uniform keeps its default when the plugin is not connected, so a default of `-1` lets a shader
 tell "not connected" from "not raining".
 
-[`reshade/Skyrok_RainLens.fx`](reshade/Skyrok_RainLens.fx) is the rain on the lens effect. The
-mod's installer puts it in `Data\SKSE\Plugins\Skyrok\Shaders`, and at game start the plugin copies
-it to `reshade-shaders\Shaders\Skyrok` next to the game's executable when it is missing there or
-older. The version is the `// Version:` comment at the top of the shader: raise it with every
-change, or installed copies will not be updated.
+Two shaders are in [`reshade`](reshade):
+
+- [`Skyrok_RainLens.fx`](reshade/Skyrok_RainLens.fx): water drops on the screen while it rains.
+- [`Skyrok_Purkinje.fx`](reshade/Skyrok_Purkinje.fx): grey-blue night vision in the dark, with
+  reds going dark and bright lights keeping their colour.
+
+The mod's installer puts them in `Data\SKSE\Plugins\Skyrok\Shaders`, and at game start the plugin
+copies each one to `reshade-shaders\Shaders\Skyrok` next to the game's executable when it is
+missing there or older. The version is the `// Version:` comment at the top of a shader: raise it
+with every change, or installed copies will not be updated.
 
 ## Building
 
@@ -118,7 +126,7 @@ CommonLibSSE-NG is built from the maintained fork by alandtse through the vcpkg 
 | `include/SKSEMenuFramework.h` | SDK header of SKSE Menu Framework (third party) |
 | `include/reshade` | ReShade add-on API headers (third party) |
 | `dist` | Preset settings files and their generator |
-| `reshade` | The ReShade shader |
+| `reshade` | The ReShade shaders |
 
 ## Credits
 

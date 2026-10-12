@@ -18,6 +18,7 @@ namespace {
     using DirectionalAmbient = RE::BGSDirectionalAmbientLightingColors;
 
     NightSettings nights;
+    MoonSettings moons;
     InteriorSettings interiors;
     ImageSpaceSettings imageSpaces;
     RainSettings rains;
@@ -27,6 +28,8 @@ namespace {
     // again from these instead of stacking a new change on top of the previous one.
     struct WeatherOriginal {
         RE::TESWeather *weather;
+        bool darken;   // not on the night darkness exclusion list
+        bool moonlit;  // not on the moonlight exclusion list
         RE::Color colors[ColorType::kTotal][ColorTime::kTotal];
         RE::Color clouds[RE::TESWeather::kTotalLayers][ColorTime::kTotal];
         DirectionalAmbient directionalAmbient[ColorTime::kTotal];
@@ -154,61 +157,70 @@ namespace {
         return 0.5f;  // cloudy, or not classified
     }
 
-    void Darken(RE::TESWeather &weather) {
+    // Night darkness and moonlight are two separate features acting on the same night colours:
+    // `darken` applies the darkness multipliers, `moonlit` makes the result follow the moon phase.
+    // Either can be used without the other, so moonlight also works on vanilla nights.
+    void ChangeNight(RE::TESWeather &weather, bool darken, bool moonlit) {
         auto &colors = weather.colorData;
         const auto night = ColorTime::kNight;
 
         // -1 on a new moon, +1 on a full moon, scaled down under clouds
-        const float swing = nights.moonlit
-                                ? nights.moonStrength * MoonVisibility(weather) *
-                                      (2.0f * moonLightByPhase[moonPhase] - 1.0f)
-                                : 0.0f;
+        const float swing = moonlit ? moons.strength * MoonVisibility(weather) *
+                                          (2.0f * moonLightByPhase[moonPhase] - 1.0f)
+                                    : 0.0f;
         const float moon = 1.0f + swing;
         // dark nights show a few more stars, bright moons wash some out
         const float stars = 1.0f - 0.5f * swing;
 
-        Scale(colors[ColorType::kSkyUpper][night], nights.sky * moon);
-        Scale(colors[ColorType::kSkyLower][night], nights.sky * moon);
-        Scale(colors[ColorType::kHorizon][night], nights.sky * moon);
-        Scale(colors[ColorType::kFogNear][night], nights.fog * moon);
-        Scale(colors[ColorType::kFogFar][night], nights.fog * moon);
-        Scale(colors[ColorType::kAmbient][night], nights.ambient * moon);
-        Scale(colors[ColorType::kSunlight][night], nights.sunlight * moon);
-        Scale(colors[ColorType::kEffectLighting][night], nights.effectLighting * moon);
-        Scale(colors[ColorType::kSkyStatics][night], nights.skyStatics * moon);
-        Scale(colors[ColorType::kWaterMultiplier][night], nights.water * moon);
-        Scale(colors[ColorType::kStars][night], nights.stars * stars);
-        ScaleDirectionalAmbient(weather.directionalAmbientLightingColors[night], nights.ambient * moon);
-        ScaleClouds(weather, night, nights.clouds * moon);
+        const auto factor = [darken, moon](float darkness) { return (darken ? darkness : 1.0f) * moon; };
 
-        for (const auto twilight : {ColorTime::kSunrise, ColorTime::kSunset}) {
-            Scale(colors[ColorType::kAmbient][twilight], nights.twilightAmbient);
-            ScaleDirectionalAmbient(weather.directionalAmbientLightingColors[twilight], nights.twilightAmbient);
-            ScaleClouds(weather, twilight, nights.twilightClouds);
+        Scale(colors[ColorType::kSkyUpper][night], factor(nights.sky));
+        Scale(colors[ColorType::kSkyLower][night], factor(nights.sky));
+        Scale(colors[ColorType::kHorizon][night], factor(nights.sky));
+        Scale(colors[ColorType::kFogNear][night], factor(nights.fog));
+        Scale(colors[ColorType::kFogFar][night], factor(nights.fog));
+        Scale(colors[ColorType::kAmbient][night], factor(nights.ambient));
+        Scale(colors[ColorType::kSunlight][night], factor(nights.sunlight));
+        Scale(colors[ColorType::kEffectLighting][night], factor(nights.effectLighting));
+        Scale(colors[ColorType::kSkyStatics][night], factor(nights.skyStatics));
+        Scale(colors[ColorType::kWaterMultiplier][night], factor(nights.water));
+        Scale(colors[ColorType::kStars][night], (darken ? nights.stars : 1.0f) * stars);
+        ScaleDirectionalAmbient(weather.directionalAmbientLightingColors[night], factor(nights.ambient));
+        ScaleClouds(weather, night, factor(nights.clouds));
+
+        if (darken) {
+            for (const auto twilight : {ColorTime::kSunrise, ColorTime::kSunset}) {
+                Scale(colors[ColorType::kAmbient][twilight], nights.twilightAmbient);
+                ScaleDirectionalAmbient(weather.directionalAmbientLightingColors[twilight], nights.twilightAmbient);
+                ScaleClouds(weather, twilight, nights.twilightClouds);
+            }
         }
     }
 
     // Weather mods' records are already in memory when this runs, so whatever weathers
     // the load order ends up with get the same treatment.
     void SnapshotWeathers(RE::TESDataHandler &dataHandler) {
-        const auto excluded = Resolve(dataHandler, nights.excluded);
-        std::size_t skipped = 0;
+        const auto noDarkness = Resolve(dataHandler, nights.excluded);
+        const auto noMoonlight = Resolve(dataHandler, moons.excluded);
+        std::size_t darkened = 0;
+        std::size_t moonlit = 0;
         for (auto *weather : dataHandler.GetFormArray<RE::TESWeather>()) {
             if (!weather) {
                 continue;
             }
-            if (excluded.contains(weather->GetFormID())) {
-                ++skipped;
-                continue;
-            }
             auto &original = weatherOriginals.emplace_back();
             original.weather = weather;
+            original.darken = !noDarkness.contains(weather->GetFormID());
+            original.moonlit = !noMoonlight.contains(weather->GetFormID());
+            darkened += original.darken;
+            moonlit += original.moonlit;
             std::memcpy(original.colors, weather->colorData, sizeof(original.colors));
             std::memcpy(original.clouds, weather->cloudColorData, sizeof(original.clouds));
             std::memcpy(original.directionalAmbient, weather->directionalAmbientLightingColors,
                         sizeof(original.directionalAmbient));
         }
-        SKSE::log::info("Weathers handled: {}, excluded: {}", weatherOriginals.size(), skipped);
+        SKSE::log::info("Weathers: {} in total, {} open to night darkness, {} open to moonlight",
+                        weatherOriginals.size(), darkened, moonlit);
     }
 
     void ApplyNights() {
@@ -218,8 +230,10 @@ namespace {
             std::memcpy(weather.cloudColorData, original.clouds, sizeof(original.clouds));
             std::memcpy(weather.directionalAmbientLightingColors, original.directionalAmbient,
                         sizeof(original.directionalAmbient));
-            if (nights.enabled) {
-                Darken(weather);
+            const bool darken = nights.enabled && original.darken;
+            const bool moonlit = moons.enabled && original.moonlit;
+            if (darken || moonlit) {
+                ChangeNight(weather, darken, moonlit);
             }
         }
     }
@@ -231,7 +245,7 @@ namespace {
             return;
         }
         moonPhase = phase;
-        if (nights.enabled && nights.moonlit) {
+        if (moons.enabled) {
             ApplyNights();
         }
     }
@@ -578,17 +592,40 @@ namespace {
         ImGui::SeparatorText("Sunrise and sunset");
         changed |= Factor("Ambient##twilight", &nights.twilightAmbient);
         changed |= Factor("Clouds##twilight", &nights.twilightClouds);
-        ImGui::SeparatorText("Moonlit nights");
-        ImGui::TextWrapped("Nights follow the moons: brighter under a full moon, darker on a new moon, "
-                           "less so under clouds, rain or snow. The values above are the half-moon night.");
-        changed |= ImGui::Checkbox("Follow the moon phases", &nights.moonlit);
-        changed |= ImGui::SliderFloat("Strength", &nights.moonStrength, 0.0f, 1.0f, "%.2f");
+        changed |= FileButtons(nights);
+        if (changed) {
+            ApplyNights();
+        }
+    }
+
+    struct MoonPreset {
+        const char *name;
+        float strength;
+    };
+    constexpr MoonPreset moonPresets[] = {
+        {"Subtle", 0.15f},
+        {"Normal", 0.30f},
+        {"Strong", 0.50f},
+    };
+
+    void __stdcall RenderMoonlight() {
+        ImGui::TextWrapped("Nights follow the moons: brighter under a full moon, darker on a new moon, less so "
+                           "under clouds, rain or snow. A half moon leaves the night as it is. "
+                           "Works on vanilla nights and together with Skyrok's darker nights.");
+        bool changed = ImGui::Checkbox("Enabled", &moons.enabled);
+        if (const auto *preset = PresetButtons(moonPresets)) {
+            moons.enabled = true;
+            moons.strength = preset->strength;
+            changed = true;
+        }
+        ImGui::SeparatorText("Moonlight");
+        changed |= ImGui::SliderFloat("Strength", &moons.strength, 0.0f, 1.0f, "%.2f");
         {
             const std::uint32_t phase = moonPhase;
-            const float swing = nights.moonStrength * (2.0f * moonLightByPhase[phase] - 1.0f) * 100.0f;
-            ImGui::TextDisabled("Tonight: %s, clear nights %+.0f%%", moonPhaseNames[phase], swing);
+            const float swing = moons.strength * (2.0f * moonLightByPhase[phase] - 1.0f) * 100.0f;
+            ImGui::TextDisabled("Tonight: %s. Clear nights are %+.0f%% as bright.", moonPhaseNames[phase], swing);
         }
-        changed |= FileButtons(nights);
+        changed |= FileButtons(moons);
         if (changed) {
             ApplyNights();
         }
@@ -720,6 +757,7 @@ namespace {
         }
         SKSEMenuFramework::SetSection("Skyrok");
         SKSEMenuFramework::AddSectionItem("Nights", RenderNights);
+        SKSEMenuFramework::AddSectionItem("Moonlit nights", RenderMoonlight);
         SKSEMenuFramework::AddSectionItem("Interiors", RenderInteriors);
         SKSEMenuFramework::AddSectionItem("Image Space", RenderImageSpaces);
         SKSEMenuFramework::AddSectionItem("Rain and Snow", RenderPrecipitation);
@@ -866,6 +904,12 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
                         interiors.lightFadeStartMin, interiors.lightFadeEndMin, interiors.excluded.size());
     } else {
         SKSE::log::info("{} not found: interiors are left alone.", InteriorSettings::FILE);
+    }
+    if (moons.Load()) {
+        SKSE::log::info("Moonlit nights {}: strength {} | exclude entries {}", moons.enabled ? "on" : "off",
+                        moons.strength, moons.excluded.size());
+    } else {
+        SKSE::log::info("{} not found: nights do not follow the moons.", MoonSettings::FILE);
     }
     if (imageSpaces.Load()) {
         SKSE::log::info("Image spaces {}: saturation {} brightness {} contrast {} | eye adapt speed {} strength {}"

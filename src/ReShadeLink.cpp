@@ -33,6 +33,25 @@ namespace {
         return 0.0f;
     }
 
+    float Luminance(const RE::Color &color) {
+        return (0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue) / 255.0f;
+    }
+
+    // How dark a room is, from its own ambient light (after Skyrok's interior darkening, if used).
+    // Vanilla rooms sit around 0.16 on this scale; dim caves and crypts are well below, halls above.
+    float InteriorDarkness(RE::TESObjectCELL &cell) {
+        const auto *lighting = cell.GetLighting();
+        if (!lighting) {
+            return 0.0f;
+        }
+        const auto &d = lighting->directionalAmbientLightingColors.directional;
+        const float ambient = (Luminance(d.x.max) + Luminance(d.x.min) + Luminance(d.y.max) + Luminance(d.y.min) +
+                               Luminance(d.z.max) + Luminance(d.z.min)) / 6.0f;
+        constexpr float fullyDark = 0.04f;
+        constexpr float bright = 0.22f;
+        return std::clamp(1.0f - (ambient - fullyDark) / (bright - fullyDark), 0.0f, 1.0f);
+    }
+
     // Eases `shown` towards `target`, taking about `seconds` to get most of the way.
     float Ease(float shown, float target, float deltaSeconds, float seconds) {
         const float step = 1.0f - std::exp(-deltaSeconds / seconds);
@@ -56,6 +75,11 @@ namespace {
         const float interior = GameState::interior;
         const float night = GameState::night;
 
+        // eyes take longer to get used to the dark than to the light
+        static float shownDarkness = 0.0f;
+        const float targetDarkness = GameState::darkness;
+        shownDarkness = Ease(shownDarkness, targetDarkness, delta, targetDarkness > shownDarkness ? 6.0f : 2.0f);
+
         // Shaders ask for a value with an annotation: uniform float X < source = "skyrok_rain"; >;
         runtime->enumerate_uniform_variables(
             nullptr, [&](reshade::api::effect_runtime *rt, reshade::api::effect_uniform_variable variable) {
@@ -70,6 +94,8 @@ namespace {
                     rt->set_uniform_value_float(variable, &interior, 1);
                 } else if (name == "skyrok_night") {
                     rt->set_uniform_value_float(variable, &night, 1);
+                } else if (name == "skyrok_darkness") {
+                    rt->set_uniform_value_float(variable, &shownDarkness, 1);
                 }
             });
     }
@@ -77,16 +103,18 @@ namespace {
 
 void GameState::Update() {
     const auto *player = RE::PlayerCharacter::GetSingleton();
-    const auto *cell = player ? player->GetParentCell() : nullptr;
+    auto *cell = player ? player->GetParentCell() : nullptr;
     const auto *sky = RE::Sky::GetSingleton();
     if (!cell || !sky) {
         rain = 0.0f;
+        darkness = 0.0f;
         return;
     }
 
     const bool inside = cell->IsInteriorCell();
     interior = inside ? 1.0f : 0.0f;
     night = NightLevel(*sky);
+    darkness = inside ? InteriorDarkness(*cell) : night.load();
 
     if (inside || sky->mode != RE::Sky::Mode::kFull) {
         rain = 0.0f;
@@ -102,7 +130,7 @@ void GameState::Update() {
 // Shown in ReShade's add-on list.
 extern "C" __declspec(dllexport) const char *NAME = "Skyrok";
 extern "C" __declspec(dllexport) const char *DESCRIPTION =
-    "Tells Skyrok's shaders what the game is doing: rain, interior or exterior, day or night.";
+    "Tells Skyrok's shaders what the game is doing: rain, interior or exterior, day or night, darkness.";
 
 bool ReShadeLink::Connect() {
     // ReShade needs the handle of this dll; it finds its own module by itself.

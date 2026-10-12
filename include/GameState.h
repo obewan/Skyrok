@@ -6,6 +6,9 @@ namespace GameState {
     inline std::atomic<float> rain{0.0f};      // 0..1: how much it is raining where the player stands (0 indoors)
     inline std::atomic<float> interior{0.0f};  // 1 inside, 0 outside
     inline std::atomic<float> night{0.0f};     // 0 by day, 1 at night, in between during sunrise and sunset
+    // 0..1: how dark the player's surroundings are. Outdoors it is the night level; indoors it
+    // comes from the room's own ambient light, so a dim cave counts and a bright hall does not.
+    inline std::atomic<float> darkness{0.0f};
 
     // Refreshes the values above. Call from the main thread.
     void Update();
